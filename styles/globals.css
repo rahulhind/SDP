@@ -106,7 +106,7 @@ a {
   }
 }
 
-.chat-window {
+/* .chat-window {
   display: flex;
   gap: 50px;
 }
@@ -115,9 +115,9 @@ a {
   display: flex;
   flex-direction: column;
   gap: 50px;
-}
+} */
 
-.video-stream {
+/* .video-stream {
   width: 200px;
   height: 160px;
   background: white;
@@ -130,4 +130,4 @@ a {
   flex-direction: column;
   display: flex;
   justify-content: space-between;
-}
+} */

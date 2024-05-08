@@ -1,63 +1,48 @@
-// Next.js API route support: https://nextjs.org/docs/api-routes/introduction
+// pages/api/rooms/index.ts
+
 import type { NextApiRequest, NextApiResponse } from "next";
 import dbConnect from "../../../libs/dbConnect";
+import Room from "../../../models/Room";
 import { RtcTokenBuilder, RtcRole } from "agora-access-token";
 import { RtmTokenBuilder, RtmRole } from "agora-access-token";
-import Room from "../../../models/Room";
-
-type Room = {
-  status: String;
-};
-
-type ResponseData = Room[] | string;
-
 function getRtmToken(userId: string) {
-  const appID = process.env.NEXT_PUBLIC_AGORA_APP_ID!;
-  const appCertificate = process.env.AGORA_APP_CERT!;
-  const account = userId;
-  const expirationTimeInSeconds = 3600;
-  const currentTimestamp = Math.floor(Date.now() / 1000);
-  const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
-  const token = RtmTokenBuilder.buildToken(
-    appID,
-    appCertificate,
-    account,
-    RtmRole.Rtm_User,
-    privilegeExpiredTs
-  );
-  return token;
-}
-
-function getRtcToken(roomId: string, userId: string) {
-  const appID = process.env.NEXT_PUBLIC_AGORA_APP_ID!;
-  const appCertificate = process.env.AGORA_APP_CERT!;
-  const channelName = roomId;
-  const account = userId;
-  const role = RtcRole.PUBLISHER;
-  const expirationTimeInSeconds = 3600;
-  const currentTimestamp = Math.floor(Date.now() / 1000);
-  const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
-
-  const token = RtcTokenBuilder.buildTokenWithAccount(
-    appID,
-    appCertificate,
-    channelName,
-    account,
-    role,
-    privilegeExpiredTs
-  );
-
-  return token;
-}
-
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse<any>
-) {
+    const appID = process.env.NEXT_PUBLIC_AGORA_APP_ID!;
+    const appCertificate = process.env.AGORA_APP_CERT!;
+    const expirationTimeInSeconds = 3600;
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+  
+    return RtmTokenBuilder.buildToken(
+      appID,
+      appCertificate,
+      userId,
+      RtmRole.Rtm_User,
+      privilegeExpiredTs
+    );
+  }
+  
+  // Generate an RTC Token for a user in a specific room
+  function getRtcToken(roomId: string, userId: string) {
+    const appID = process.env.NEXT_PUBLIC_AGORA_APP_ID!;
+    const appCertificate = process.env.AGORA_APP_CERT!;
+    const expirationTimeInSeconds = 3600;
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
+  
+    return RtcTokenBuilder.buildTokenWithAccount(
+      appID,
+      appCertificate,
+      roomId,
+      userId,
+      RtcRole.PUBLISHER,
+      privilegeExpiredTs
+    );
+  }
+  
+export default async function handler(req: NextApiRequest, res: NextApiResponse<any>) {
+  await dbConnect();
   const { method, query } = req;
   const userId = query.userId as string;
-
-  await dbConnect();
 
   switch (method) {
     case "GET":
@@ -66,35 +51,46 @@ export default async function handler(
           { $match: { status: "waiting" } },
           { $sample: { size: 1 } },
         ]);
+
         if (rooms.length > 0) {
-          const roomId = rooms[0]._id.toString();
-          await Room.findByIdAndUpdate(roomId, {
-            status: "chatting",
-          });
+            const roomId = rooms[0]._id.toString();
+            var stat='waiting';
+            if (rooms[0].users.length > 0)
+                stat='chatting'
+          const updatedRoom = await Room.findByIdAndUpdate(
+            roomId,
+            { status: stat, $addToSet: { users: userId } },
+            { new: true }
+          );
+
           res.status(200).json({
-            rooms,
+            rooms: [updatedRoom],
             rtcToken: getRtcToken(roomId, userId),
             rtmToken: getRtmToken(userId),
           });
         } else {
-          res.status(200).json({ rooms: [], token: null });
+          res.status(200).json({ rooms: [], rtcToken: null, rtmToken: null });
         }
       } catch (error) {
         res.status(400).json((error as any).message);
       }
       break;
+
     case "POST":
-      const room = await Room.create({
-        status: "waiting",
-      });
-      res.status(200).json({
-        room,
-        rtcToken: getRtcToken(room._id.toString(), userId),
-        rtmToken: getRtmToken(userId),
-      });
+      try {
+        const room = await Room.create({ status: "waiting", users: [userId] });
+        res.status(200).json({
+          room,
+          rtcToken: getRtcToken(room._id.toString(), userId),
+          rtmToken: getRtmToken(userId),
+        });
+      } catch (error) {
+        res.status(500).json((error as any).message);
+      }
       break;
+
     default:
-      res.status(400).json("no method for this endpoint");
+      res.status(400).json("Invalid request method for this endpoint.");
       break;
   }
 }

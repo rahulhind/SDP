@@ -20,7 +20,7 @@ if (!MONGODB_URI) {
  * during API Route usage.
  */
 let cached = global.mongoose;
-
+console.log(cached)
 if (!cached) {
   cached = global.mongoose = { conn: null, promise: null };
 }
